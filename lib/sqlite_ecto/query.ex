@@ -5,7 +5,7 @@ defmodule Sqlite.Ecto.Query do
   import Sqlite.Ecto.Util
 
   # ALTER TABLE queries:
-  def query(pid, <<"ALTER TABLE ", _ :: binary>>=sql, params, opts) do
+  def execute(pid, <<"ALTER TABLE ", _ :: binary>>=sql, params, opts) do
     sql
     |> String.split("; ")
     |> Enum.reduce(:ok, fn
@@ -14,7 +14,7 @@ defmodule Sqlite.Ecto.Query do
     end)
   end
   # all other queries:
-  def query(pid, sql, params, opts) do
+  def execute(pid, sql, params, opts) do
     params = Enum.map(params, fn
       %Ecto.Query.Tagged{type: :binary, value: value} when is_binary(value) -> {:blob, value}
       %Ecto.Query.Tagged{value: value} -> value
@@ -68,16 +68,31 @@ defmodule Sqlite.Ecto.Query do
     assemble ["DELETE FROM", quote_id(table), where]
   end
 
-  def insert(prefix, table, [], returning) do
+  def insert(prefix, table, [], rows, returning) do
     return = returning_clause(prefix, table, returning, "INSERT")
     assemble ["INSERT INTO", quote_id({prefix, table}), "DEFAULT VALUES", return]
   end
-  def insert(prefix, table, fields, returning) do
-    cols = map_intersperse(fields, ",", &quote_id/1)
-    vals = map_intersperse(1..length(fields), ",", &"?#{&1}")
+  def insert(prefix, table, header, rows, returning) do
+    cols = map_intersperse(header, ",", &quote_id/1)
+    vals = insert_all(rows, 1, "")
     return = returning_clause(prefix, table, returning, "INSERT")
-    assemble ["INSERT INTO", quote_id({prefix, table}), "(", cols, ")", "VALUES (", vals, ")", return]
+    assemble ["INSERT INTO", quote_id({prefix, table}), "(", cols, ")", "VALUES", vals, return]
   end
+
+  defp insert_all([row|rows], counter, acc) do
+    {counter, row} = insert_each(row, counter, "")
+    insert_all(rows, counter, acc <> ",(" <> row <> ")")
+  end
+  defp insert_all([], _counter, "," <> acc) do
+    acc
+  end
+
+  defp insert_each([nil|t], counter, acc),
+    do: insert_each(t, counter, acc <> ",DEFAULT")
+  defp insert_each([_|t], counter, acc),
+    do: insert_each(t, counter + 1, acc <> ",?" <> Integer.to_string(counter))
+  defp insert_each([], counter, "," <> acc),
+    do: {counter, acc}
 
   def update(prefix, table, fields, filters, returning) do
     {vals, count} = Enum.map_reduce(fields, 1, fn (i, acc) ->
@@ -203,21 +218,23 @@ defmodule Sqlite.Ecto.Query do
   # Execute a query with (possibly) binded parameters and handle busy signals
   # from the database.
   defp do_query(pid, sql, params, opts) do
-    opts = Keyword.put(opts, :bind, params)
-    case Sqlitex.Server.query(pid, sql, opts) do
+    mapper = opts[:decode_mapper] || fn x -> x end
+    opts = opts |> Keyword.put(:bind, params)
+
+    case Sqlitex.query(pid, sql, opts) do
       # busy error means another process is writing to the database; try again
       {:error, {:busy, _}} -> do_query(pid, sql, params, opts)
       {:error, msg} -> {:error, Sqlite.Ecto.Error.exception(msg)}
-      rows when is_list(rows) -> query_result(pid, sql, rows)
+      {:ok, rows} -> query_result(pid, sql, rows, mapper)
     end
   end
 
   # If this is an INSERT, UPDATE, or DELETE, then return the number of changed
   # rows.  Otherwise (e.g. for SELECT) return the queried column values.
-  defp query_result(pid, <<"INSERT ", _::binary>>, []), do: changes_result(pid)
-  defp query_result(pid, <<"UPDATE ", _::binary>>, []), do: changes_result(pid)
-  defp query_result(pid, <<"DELETE ", _::binary>>, []), do: changes_result(pid)
-  defp query_result(_pid, _sql, rows) do
+  defp query_result(pid, <<"INSERT ", _::binary>>, [], _), do: changes_result(pid)
+  defp query_result(pid, <<"UPDATE ", _::binary>>, [], _), do: changes_result(pid)
+  defp query_result(pid, <<"DELETE ", _::binary>>, [], _), do: changes_result(pid)
+  defp query_result(_pid, _sql, rows, mapper) do
     rows = Enum.map(rows, fn row ->
       row
       |> cast_any_datetimes
@@ -226,12 +243,12 @@ defmodule Sqlite.Ecto.Query do
         {:blob, binary} -> binary
         other -> other
       end)
-    end)
+    end) |> Enum.map(mapper)
     {:ok, %{rows: rows, num_rows: length(rows)}}
   end
 
   defp changes_result(pid) do
-    [["changes()": count]] = Sqlitex.Server.query(pid, "SELECT changes()")
+    {:ok, [["changes()": count]]} = Sqlitex.query(pid, "SELECT changes()")
     {:ok, %{rows: nil, num_rows: count}}
   end
 
@@ -313,6 +330,10 @@ defmodule Sqlite.Ecto.Query do
 
   defp fragment_identifier(pos), do: "f" <> Integer.to_string(pos)
 
+  defp select(%SelectExpr{expr: expr, fields: []}, distinct, sources) do
+    ["SELECT", distinct(distinct), expr(expr, sources)]
+  end
+
   defp select(%SelectExpr{fields: fields}, distinct, sources) do
     fields = Enum.map_join(fields, ", ", fn (f) ->
       assemble(expr(f, sources))
@@ -341,7 +362,7 @@ defmodule Sqlite.Ecto.Query do
     "#{name}.#{quote_id(field)}"
   end
 
-  defp expr({:&, _, [idx]}, sources) do
+  defp expr({:&, _, [idx, _fields, _counter]}, sources) do
     {table, name, model} = elem(sources, idx)
     unless model do
       raise ArgumentError, "SQLite requires a model when using selector #{inspect name} but " <>
@@ -355,6 +376,10 @@ defmodule Sqlite.Ecto.Query do
     args = Enum.map_join(right, ", ", &expr(&1, sources))
     if args == "", do: args = []
     [expr(left, sources), "IN (", args, ")"]
+  end
+
+  defp expr({:in, _, [left, {:^, _, [ix, 0]}]}, sources) do
+    [expr(left, sources), "IN ()"]
   end
 
   defp expr({:in, _, [left, {:^, _, [ix, length]}]}, sources) do

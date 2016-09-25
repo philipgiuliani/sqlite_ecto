@@ -37,13 +37,9 @@ defmodule Sqlite.Ecto do
 
   ## Custom SQLite Types
 
-  def load({:embed, _} = type, binary) when is_binary(binary) do
-    super(type, json_library.decode!(binary))
-  end
-  def load(:map, binary) when is_binary(binary) do
-    super(:map, json_library.decode!(binary))
-  end
-  def load(type, value), do: super(type, value)
+  def loaders({:embed, _} = type, _), do: [&json_library.decode!/1]
+  def loaders(:map, _), do: [&json_library.decode!/1]
+  def loaders(primitive_type, ecto_type), do: super(primitive_type, ecto_type)
 
   ## Storage API
 

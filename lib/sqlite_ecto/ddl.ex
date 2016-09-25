@@ -122,6 +122,7 @@ defmodule Sqlite.Ecto.DDL do
   defp column_type(:serial, _opts), do: "INTEGER"
   defp column_type(:string, _opts), do: "TEXT"
   defp column_type(:map, _opts), do: "TEXT"
+  defp column_type({:map, _}, _opts), do: "TEXT"
   defp column_type({:array, _}, _opts), do: raise(ArgumentError, "Array type is not supported by SQLite")
   defp column_type(type, _opts), do: type |> Atom.to_string |> String.upcase
 
