@@ -25,7 +25,7 @@ defmodule Sqlite.Ecto.Mixfile do
 
   # Configuration for the OTP application
   def application do
-    [applications: [:logger, :ecto]]
+    [applications: [:logger, :ecto, :sqlitex]]
   end
 
   # Dependencies
@@ -33,7 +33,7 @@ defmodule Sqlite.Ecto.Mixfile do
     [{:earmark, "~> 0.1", only: :dev},
      {:ex_doc, "~> 0.7", only: :dev},
      {:ecto, "~> 2.0"},
-     {:poison, "~> 1.0"},
+     {:poison, "~> 2.0"},
      {:sqlitex, "~> 1.0"},
      {:db_connection, "~> 1.0-rc4"}]
   end

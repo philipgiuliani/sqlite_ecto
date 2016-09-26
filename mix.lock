@@ -6,6 +6,6 @@
   "esqlite": {:hex, :esqlite, "0.2.2", "e4e8b39062a075e0bd4756b894dd2aa8edbf94c9081c1fb5c72dc705bf2f2d88", [:rebar, :make], []},
   "ex_doc": {:hex, :ex_doc, "0.11.4", "a064bdb720594c3745b94709b17ffb834fd858b4e0c1f48f37c0d92700759e02", [:mix], [{:earmark, "~> 0.1.17 or ~> 0.2", [hex: :earmark, optional: true]}]},
   "pipe": {:hex, :pipe, "0.0.2", "eff98a868b426745acef103081581093ff5c1b88100f8ff5949b4a30e81d0d9f", [:mix], []},
-  "poison": {:hex, :poison, "1.5.2", "560bdfb7449e3ddd23a096929fb9fc2122f709bcc758b2d5d5a5c7d0ea848910", [:mix], []},
+  "poison": {:hex, :poison, "2.2.0", "4763b69a8a77bd77d26f477d196428b741261a761257ff1cf92753a0d4d24a63", [:mix], []},
   "poolboy": {:hex, :poolboy, "1.5.1", "6b46163901cfd0a1b43d692657ed9d7e599853b3b21b95ae5ae0a777cf9b6ca8", [:rebar], []},
   "sqlitex": {:hex, :sqlitex, "1.0.1", "dd94664065ff26c4cebf4c647ec6133d65a870f1828aa160eebf80a2484c98a0", [:mix], [{:decimal, "~> 1.1.0", [hex: :decimal, optional: false]}, {:esqlite, "~> 0.2.0", [hex: :esqlite, optional: false]}]}}
